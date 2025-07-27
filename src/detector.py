@@ -10,9 +10,43 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import nltk
 from collections import Counter
+import warnings
+import sys
+import os
+import io
+from contextlib import redirect_stderr, contextmanager
 from .utils import setup_logging, detect_language, clean_text
 
 logger = setup_logging()
+
+# 全局错误抑制
+warnings.filterwarnings('ignore')
+os.environ['PYTHONWARNINGS'] = 'ignore'
+
+@contextmanager
+def suppress_stderr():
+    """抑制标准错误输出的上下文管理器"""
+    with open(os.devnull, "w") as devnull:
+        old_stderr = sys.stderr
+        sys.stderr = devnull
+        try:
+            yield
+        finally:
+            sys.stderr = old_stderr
+
+@contextmanager
+def suppress_all_output():
+    """抑制所有输出的上下文管理器"""
+    with open(os.devnull, "w") as devnull:
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        sys.stdout = devnull
+        sys.stderr = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
 
 class PromptInjectionDetector:
     """提示词注入检测器"""
@@ -59,7 +93,7 @@ class PromptInjectionDetector:
             self.multilingual_model = None
     
     def extract_pdf_content(self, pdf_path: str) -> Dict[str, Any]:
-        """提取PDF内容和格式信息"""
+        """提取PDF内容和格式信息 - 改进版本，避免颜色解析错误"""
         content = {
             'text': '',
             'metadata': {},
@@ -73,10 +107,25 @@ class PromptInjectionDetector:
         
         try:
             # 获取文件大小
-            import os
             content['file_size'] = os.path.getsize(pdf_path)
-            
-            # 使用pdfplumber进行详细分析
+        except Exception:
+            pass
+        
+        # 方法1: 优先使用 pdfplumber (更稳定，少错误)
+        success = self._extract_with_pdfplumber(pdf_path, content)
+        
+        # 方法2: 如果 pdfplumber 失败或内容不足，使用 PyMuPDF 补充
+        if not success or len(content['text']) < 100:
+            self._extract_with_pymupdf_quiet(pdf_path, content)
+        
+        # 后处理
+        content = self._post_process_content(content)
+        
+        return content
+    
+    def _extract_with_pdfplumber(self, pdf_path: str, content: Dict) -> bool:
+        """使用 pdfplumber 提取内容"""
+        try:
             with pdfplumber.open(pdf_path) as pdf:
                 content['page_count'] = len(pdf.pages)
                 full_text = ""
@@ -84,86 +133,255 @@ class PromptInjectionDetector:
                 font_colors = []
                 
                 for page_num, page in enumerate(pdf.pages):
-                    # 提取文本
-                    page_text = page.extract_text() or ""
-                    full_text += page_text + "\n"
-                    
-                    # 分析字符格式
-                    chars = page.chars if hasattr(page, 'chars') else []
-                    
-                    for char in chars:
-                        try:
-                            # 字体大小分析
-                            size = char.get('size', 12)
-                            font_sizes.append(size)
-                            
-                            # 颜色分析
-                            color = char.get('color', (0, 0, 0))
-                            if isinstance(color, (list, tuple)) and len(color) >= 3:
-                                font_colors.append(color)
+                    try:
+                        # 提取文本
+                        page_text = page.extract_text() or ""
+                        full_text += page_text + "\n"
+                        
+                        # 安全地分析字符格式
+                        chars = getattr(page, 'chars', [])
+                        
+                        for char in chars:
+                            try:
+                                self._safe_analyze_char_pdfplumber(char, content, font_sizes, font_colors)
+                            except Exception:
+                                # 忽略单个字符分析错误
+                                continue
                                 
-                                # 检查白色或接近白色的文本
-                                if self._is_white_color(color):
-                                    content['white_text'].append(char.get('text', ''))
-                            
-                            # 检查极小字体
-                            if size < self.thresholds['small_font_size']:
-                                content['small_text'].append(char.get('text', ''))
-                                
-                        except Exception as e:
-                            logger.debug(f"字符分析失败: {e}")
-                            continue
+                    except Exception as e:
+                        logger.debug(f"页面 {page_num} 处理失败: {e}")
+                        continue
                 
                 content['text'] = full_text
                 
-                # 字体统计
+                # 安全的字体统计
                 if font_sizes:
-                    content['font_analysis'] = {
-                        'avg_font_size': np.mean(font_sizes),
-                        'min_font_size': np.min(font_sizes),
-                        'max_font_size': np.max(font_sizes),
-                        'font_size_std': np.std(font_sizes),
-                        'small_font_ratio': len([s for s in font_sizes if s < 4]) / len(font_sizes)
-                    }
+                    content['font_analysis'] = self._safe_font_analysis(font_sizes)
             
-            # 使用PyMuPDF提取元数据
-            doc = fitz.open(pdf_path)
-            content['metadata'] = doc.metadata or {}
-            doc.close()
-            
-            # 检查不可见字符
-            content['invisible_chars'] = self._detect_invisible_chars(content['text'])
+            return True
             
         except Exception as e:
-            logger.error(f"PDF内容提取失败 {pdf_path}: {e}")
+            logger.debug(f"pdfplumber 提取失败: {e}")
+            return False
+    
+    def _safe_analyze_char_pdfplumber(self, char: Dict, content: Dict, 
+                                    font_sizes: List, font_colors: List):
+        """安全地分析 pdfplumber 字符"""
+        try:
+            # 字体大小分析
+            size = char.get('size', 12)
+            if isinstance(size, (int, float)) and size > 0:
+                font_sizes.append(float(size))
+                
+                # 检查极小字体
+                if size < self.thresholds['small_font_size']:
+                    text_char = char.get('text', '')
+                    if text_char and text_char.strip():
+                        content['small_text'].append(text_char)
+            
+            # 颜色分析（更安全的方式）
+            color = char.get('non_stroking_color') or char.get('color')
+            if color is not None:
+                try:
+                    if self._is_white_color_safe(color):
+                        text_char = char.get('text', '')
+                        if text_char and text_char.strip():
+                            content['white_text'].append(text_char)
+                    
+                    # 记录颜色用于统计
+                    if isinstance(color, (list, tuple)) and len(color) >= 3:
+                        font_colors.append(color)
+                        
+                except Exception:
+                    pass
+                    
+        except Exception:
+            pass
+    
+    def _extract_with_pymupdf_quiet(self, pdf_path: str, content: Dict):
+        """使用 PyMuPDF 安静模式提取内容"""
+        try:
+            # 使用错误抑制
+            with suppress_all_output():
+                doc = fitz.open(pdf_path)
+                
+                # 更新页面计数（如果还没有）
+                if not content['page_count']:
+                    content['page_count'] = len(doc)
+                
+                # 提取元数据
+                if not content['metadata']:
+                    try:
+                        content['metadata'] = doc.metadata or {}
+                    except Exception:
+                        content['metadata'] = {}
+                
+                # 逐页提取内容
+                for page_num in range(len(doc)):
+                    try:
+                        page = doc[page_num]
+                        
+                        # 安全提取文本
+                        with suppress_stderr():
+                            text = page.get_text()
+                            if text and text not in content['text']:
+                                content['text'] += text + '\n'
+                        
+                        # 安全分析格式（如果需要更多细节）
+                        if len(content['small_text']) < 10:  # 只在需要时进行格式分析
+                            try:
+                                with suppress_stderr():
+                                    self._safe_analyze_page_format(page, content)
+                            except Exception:
+                                pass
+                                
+                    except Exception:
+                        continue
+                
+                doc.close()
+                
+        except Exception as e:
+            logger.debug(f"PyMuPDF 安静提取失败: {e}")
+    
+    def _safe_analyze_page_format(self, page, content: Dict):
+        """安全地分析页面格式"""
+        try:
+            # 使用更简单的文本提取方法
+            text_dict = page.get_text("dict")
+            
+            for block in text_dict.get('blocks', []):
+                if 'lines' not in block:
+                    continue
+                    
+                for line in block['lines']:
+                    for span in line.get('spans', []):
+                        try:
+                            text = span.get('text', '').strip()
+                            if not text:
+                                continue
+                                
+                            size = span.get('size', 12)
+                            color = span.get('color', 0)
+                            
+                            # 安全的小字体检测
+                            if isinstance(size, (int, float)) and size < self.thresholds['small_font_size']:
+                                content['small_text'].append(text)
+                            
+                            # 安全的白色文本检测
+                            if self._is_white_color_safe(color):
+                                content['white_text'].append(text)
+                                
+                        except Exception:
+                            continue
+                            
+        except Exception:
+            pass
+    
+    def _is_white_color_safe(self, color) -> bool:
+        """安全的白色颜色检测"""
+        try:
+            if color is None:
+                return False
+                
+            # 处理不同的颜色格式
+            if isinstance(color, (int, float)):
+                # 单一值（灰度）
+                return float(color) > 0.95
+                
+            elif isinstance(color, (list, tuple)):
+                if len(color) >= 3:
+                    # RGB 值
+                    return all(float(c) > 0.95 for c in color[:3])
+                elif len(color) == 1:
+                    # 单一值在列表中
+                    return float(color[0]) > 0.95
+                    
+            elif isinstance(color, str):
+                # 十六进制颜色
+                if color.startswith('#'):
+                    try:
+                        rgb = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
+                        return all(c > 243 for c in rgb)  # 243/255 ≈ 0.95
+                    except Exception:
+                        return False
+                        
+            return False
+            
+        except Exception:
+            return False
+    
+    def _is_white_color(self, color: Tuple) -> bool:
+        """判断是否为白色或接近白色 - 保留原方法兼容性"""
+        return self._is_white_color_safe(color)
+    
+    def _safe_font_analysis(self, font_sizes: List[float]) -> Dict:
+        """安全的字体分析"""
+        try:
+            if not font_sizes:
+                return {}
+                
+            font_sizes = [s for s in font_sizes if isinstance(s, (int, float)) and s > 0]
+            
+            if not font_sizes:
+                return {}
+                
+            return {
+                'avg_font_size': float(np.mean(font_sizes)),
+                'min_font_size': float(np.min(font_sizes)),
+                'max_font_size': float(np.max(font_sizes)),
+                'font_size_std': float(np.std(font_sizes)),
+                'small_font_ratio': len([s for s in font_sizes if s < 4]) / len(font_sizes)
+            }
+            
+        except Exception:
+            return {
+                'avg_font_size': 12.0,
+                'min_font_size': 8.0,
+                'max_font_size': 16.0,
+                'font_size_std': 2.0,
+                'small_font_ratio': 0.0
+            }
+    
+    def _post_process_content(self, content: Dict) -> Dict:
+        """后处理提取的内容"""
+        try:
+            # 检查不可见字符
+            if content['text']:
+                content['invisible_chars'] = self._detect_invisible_chars(content['text'])
+            
+            # 清理重复的小字体和白色文本
+            content['small_text'] = list(set(content['small_text']))[:100]  # 限制数量
+            content['white_text'] = list(set(content['white_text']))[:100]
+            
+            # 确保数值类型正确
+            content['page_count'] = int(content.get('page_count', 0))
+            content['file_size'] = int(content.get('file_size', 0))
+            
+        except Exception as e:
+            logger.debug(f"后处理失败: {e}")
         
         return content
     
-    def _is_white_color(self, color: Tuple) -> bool:
-        """判断是否为白色或接近白色"""
-        if len(color) < 3:
-            return False
-        
-        # RGB值接近(1,1,1)或(255,255,255)
-        if all(c > 0.95 for c in color[:3]):
-            return True
-        
-        return False
-    
     def _detect_invisible_chars(self, text: str) -> List[str]:
         """检测不可见字符"""
-        invisible_patterns = [
-            r'[\u200b\u200c\u200d\ufeff\u2060\u180e]+',  # 零宽字符
-            r'[\u00a0\u2007\u202f]+',  # 非断行空格
-            r'[\u034f\u061c\u115f\u1160\u17b4\u17b5]+',  # 其他不可见字符
-        ]
-        
-        invisible_chars = []
-        for pattern in invisible_patterns:
-            matches = re.findall(pattern, text)
-            invisible_chars.extend(matches)
-        
-        return invisible_chars
+        try:
+            invisible_patterns = [
+                r'[\u200b\u200c\u200d\ufeff\u2060\u180e]+',  # 零宽字符
+                r'[\u00a0\u2007\u202f]+',  # 非断行空格
+                r'[\u034f\u061c\u115f\u1160\u17b4\u17b5]+',  # 其他不可见字符
+            ]
+            
+            invisible_chars = []
+            for pattern in invisible_patterns:
+                matches = re.findall(pattern, text)
+                invisible_chars.extend(matches)
+            
+            return invisible_chars
+            
+        except Exception:
+            return []
+    
+    # ... 保留所有其他原有方法不变 ...
     
     def detect_keyword_injection(self, text: str) -> List[Dict]:
         """检测关键词注入"""
@@ -608,6 +826,7 @@ class PromptInjectionDetector:
         
         return result
 
+# EnsembleDetector 类保持不变
 class EnsembleDetector:
     """集成检测器"""
     

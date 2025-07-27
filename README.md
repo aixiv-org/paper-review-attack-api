@@ -92,3 +92,33 @@ paper_review_attack_detection/
 │   ├── attack_samples/      # 攻击样本
 │   └── results/             # 实验结果
 └── tests/                   # 测试文件
+
+📈 可视化
+系统提供丰富的可视化功能：
+
+🔵 混淆矩阵: 检测准确性分析
+📊 ROC曲线: 分类器性能评估
+📈 风险分数分布: 正常vs攻击文件对比
+🎯 按攻击类型分析: 各类攻击的检测效果
+🤝 贡献指南
+Fork 项目
+创建特性分支 (git checkout -b feature/AmazingFeature)
+提交更改 (git commit -m 'Add some AmazingFeature')
+推送到分支 (git push origin feature/AmazingFeature)
+开启 Pull Request
+📝 许可证
+本项目采用 MIT 许可证 - 查看 LICENSE 文件了解详情。
+
+📞 联系方式
+项目主页: https://github.com/your-repo/paper-review-attack-detection
+问题反馈: https://github.com/your-repo/paper-review-attack-detection/issues
+邮箱: research@example.com
+🙏 致谢
+arXiv.org 提供的开放访问论文数据
+Hugging Face 提供的预训练模型
+学术界对AI安全研究的支持
+📚 相关文献
+"Hidden Prompts in Manuscripts Exploit AI-Assisted Peer Review" - arXiv:2507.06185
+"Prompt Injection Attacks in Academic Publishing" - 相关研究
+"AI Safety in Scholarly Communication" - 理论基础
+

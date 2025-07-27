@@ -23,6 +23,7 @@ cd paper-review-attack-detection
 # 创建虚拟环境
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
+conda create -n paper_review_attack python==3.12.0
 # 或
 venv\Scripts\activate  # Windows
 

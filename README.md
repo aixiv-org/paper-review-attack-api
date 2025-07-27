@@ -104,11 +104,12 @@ paper_review_attack_detection/
 🤝 贡献指南
 
 🙏 致谢
-arXiv.org 提供的开放访问论文数据
-Hugging Face 提供的预训练模型
-学术界对AI安全研究的支持
+- arXiv.org 提供的开放访问论文数据
+- Hugging Face 提供的预训练模型
+- 学术界对AI安全研究的支持
+
 📚 相关文献
-"Hidden Prompts in Manuscripts Exploit AI-Assisted Peer Review" - arXiv:2507.06185
-"Prompt Injection Attacks in Academic Publishing" - 相关研究
-"AI Safety in Scholarly Communication" - 理论基础
+1."Hidden Prompts in Manuscripts Exploit AI-Assisted Peer Review" - arXiv:2507.06185
+2."Prompt Injection Attacks in Academic Publishing" - 相关研究
+3."AI Safety in Scholarly Communication" - 理论基础
 

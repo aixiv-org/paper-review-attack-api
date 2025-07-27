@@ -28,13 +28,38 @@ venv\Scripts\activate  # Windows
 
 # 安装依赖
 pip install -r requirements.txt
+```
+### 下载论文
 
+```bash
 # 从arXiv下载
 python scripts/download_data.py --source arxiv --max-papers 100
 
 # 使用本地PDF
 python scripts/download_data.py --source local --local-dir /path/to/pdfs
+```
+# 快速生成所有攻击
 
+```bash
+# 生成所有类型的攻击样本
+python scripts/generate_attacks.py \
+  --input-dir data/clean_papers \
+  --output-dir data/attack_samples \
+  --attack-types white_text metadata invisible_chars mixed_language \
+  --attack-ratio 0.5 \
+  --languages english chinese japanese mixed \
+  --batch-size 10
+
+# 使用高级攻击生成器
+python scripts/generate_attacks.py \
+  --advanced \
+  --attack-types white_text metadata invisible_chars steganographic \
+  --languages english chinese japanese \
+  --attack-ratio 0.3
+```
+# 快速生成所有攻击
+
+```bash
 # 生成白色字体攻击
 python scripts/generate_attacks.py --attack-types white_text
 
@@ -43,6 +68,35 @@ python scripts/generate_attacks.py --languages english chinese
 
 # 使用高级攻击
 python scripts/generate_attacks.py --advanced
+
+# 1. 仅生成白色字体攻击
+python scripts/generate_attacks.py \
+  --attack-types white_text \
+  --languages english \
+  --attack-ratio 0.8
+
+# 2. 仅生成元数据攻击
+python scripts/generate_attacks.py \
+  --attack-types metadata \
+  --languages chinese \
+  --attack-ratio 0.5
+
+# 3. 仅生成不可见字符攻击
+python scripts/generate_attacks.py \
+  --attack-types invisible_chars \
+  --languages japanese \
+  --attack-ratio 0.3
+
+# 4. 仅生成多语言混合攻击
+python scripts/generate_attacks.py \
+  --attack-types mixed_language \
+  --languages mixed \
+  --attack-ratio 0.4
+```
+
+# 检测方法
+
+```bash
 
 # 标准检测
 python scripts/run_detection.py --detector-type standard
@@ -53,6 +107,11 @@ python scripts/run_detection.py --detector-type ensemble
 # 单文件检测
 python scripts/run_detection.py --single-file paper.pdf
 
+```
+
+# 测试
+
+```bash
 # 运行所有测试
 python -m pytest tests/
 
@@ -62,6 +121,9 @@ python -m pytest tests/test_detector.py -v
 # 测试覆盖率
 python -m pytest --cov=src tests/
 
+```
+
+```bash
 # 1. 完整实验（推荐）
 python scripts/run_experiment.py --experiment-name "baseline_test"
 

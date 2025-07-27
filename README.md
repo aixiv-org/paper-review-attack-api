@@ -28,3 +28,67 @@ venv\Scripts\activate  # Windows
 
 # 安装依赖
 pip install -r requirements.txt
+
+# 从arXiv下载
+python scripts/download_data.py --source arxiv --max-papers 100
+
+# 使用本地PDF
+python scripts/download_data.py --source local --local-dir /path/to/pdfs
+
+# 生成白色字体攻击
+python scripts/generate_attacks.py --attack-types white_text
+
+# 生成多语言攻击
+python scripts/generate_attacks.py --languages english chinese
+
+# 使用高级攻击
+python scripts/generate_attacks.py --advanced
+
+# 标准检测
+python scripts/run_detection.py --detector-type standard
+
+# 集成检测
+python scripts/run_detection.py --detector-type ensemble
+
+# 单文件检测
+python scripts/run_detection.py --single-file paper.pdf
+
+# 运行所有测试
+python -m pytest tests/
+
+# 运行特定测试
+python -m pytest tests/test_detector.py -v
+
+# 测试覆盖率
+python -m pytest --cov=src tests/
+
+# 1. 完整实验（推荐）
+python scripts/run_experiment.py --experiment-name "baseline_test"
+
+# 2. 分步执行
+python scripts/download_data.py --max-papers 50
+python scripts/generate_attacks.py --attack-ratio 0.3
+python scripts/run_detection.py --input-dir data/clean_papers
+
+
+paper_review_attack_detection/
+├── README.md                 # 项目说明
+├── requirements.txt          # 依赖包列表
+├── config/
+│   └── config.yaml          # 配置文件
+├── src/                     # 核心代码
+│   ├── data_collector.py    # 数据收集
+│   ├── attack_generator.py  # 攻击生成
+│   ├── detector.py          # 检测算法
+│   ├── evaluator.py         # 性能评估
+│   └── utils.py             # 工具函数
+├── scripts/                 # 执行脚本
+│   ├── download_data.py     # 数据下载
+│   ├── generate_attacks.py  # 攻击生成
+│   ├── run_detection.py     # 运行检测
+│   └── run_experiment.py    # 完整实验
+├── data/                    # 数据目录
+│   ├── clean_papers/        # 正常论文
+│   ├── attack_samples/      # 攻击样本
+│   └── results/             # 实验结果
+└── tests/                   # 测试文件

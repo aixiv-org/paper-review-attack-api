@@ -101,18 +101,7 @@ paper_review_attack_detection/
 📈 风险分数分布: 正常vs攻击文件对比
 🎯 按攻击类型分析: 各类攻击的检测效果
 🤝 贡献指南
-Fork 项目
-创建特性分支 (git checkout -b feature/AmazingFeature)
-提交更改 (git commit -m 'Add some AmazingFeature')
-推送到分支 (git push origin feature/AmazingFeature)
-开启 Pull Request
-📝 许可证
-本项目采用 MIT 许可证 - 查看 LICENSE 文件了解详情。
 
-📞 联系方式
-项目主页: https://github.com/your-repo/paper-review-attack-detection
-问题反馈: https://github.com/your-repo/paper-review-attack-detection/issues
-邮箱: research@example.com
 🙏 致谢
 arXiv.org 提供的开放访问论文数据
 Hugging Face 提供的预训练模型

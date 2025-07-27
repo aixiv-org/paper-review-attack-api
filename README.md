@@ -110,6 +110,10 @@ paper_review_attack_detection/
 
 📚 相关文献
 1."Hidden Prompts in Manuscripts Exploit AI-Assisted Peer Review" - arXiv:2507.06185
+```
+```
 2."Prompt Injection Attacks in Academic Publishing" - 相关研究
+```
+```
 3."AI Safety in Scholarly Communication" - 理论基础
 

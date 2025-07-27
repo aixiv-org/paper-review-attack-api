@@ -157,6 +157,24 @@ paper_review_attack_detection/
 └── tests/                   # 测试文件
 ```
 
+### Pipeline
+
+```bash
+graph TD
+    A[PDF输入] --> B[内容提取]
+    B --> C[多层检测]
+    C --> D[格式检测]
+    C --> E[语义检测] 
+    C --> F[编码检测]
+    C --> G[统计检测]
+    D --> H[风险分数计算]
+    E --> H
+    F --> H
+    G --> H
+    H --> I[恶意判定]
+    I --> J[结果输出]
+```
+
 📈 可视化
 系统提供丰富的可视化功能：
 

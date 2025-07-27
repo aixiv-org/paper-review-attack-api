@@ -38,7 +38,7 @@ python scripts/download_data.py --source arxiv --max-papers 100
 # 使用本地PDF
 python scripts/download_data.py --source local --local-dir /path/to/pdfs
 ```
-# 快速生成所有攻击
+### 快速生成所有攻击
 
 ```bash
 # 生成所有类型的攻击样本
@@ -57,7 +57,7 @@ python scripts/generate_attacks.py \
   --languages english chinese japanese \
   --attack-ratio 0.3
 ```
-# 快速生成所有攻击
+### 快速生成所有攻击
 
 ```bash
 # 生成白色字体攻击
@@ -94,7 +94,7 @@ python scripts/generate_attacks.py \
   --attack-ratio 0.4
 ```
 
-# 检测方法
+### 检测方法
 
 ```bash
 
@@ -109,7 +109,7 @@ python scripts/run_detection.py --single-file paper.pdf
 
 ```
 
-# 测试
+### 测试
 
 ```bash
 # 运行所有测试

@@ -17,7 +17,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-repo/paper-review-attack-detection.git
+git clone https://github.com/King-play/paper-review-attack-detection.git
 cd paper-review-attack-detection
 
 # 创建虚拟环境

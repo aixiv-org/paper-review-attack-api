@@ -373,6 +373,117 @@ class AttackSampleGenerator:
         
         return stats
 
+    def _parse_attack_types(self) -> Dict[str, float]:
+        """解析攻击类型配置"""
+        attack_types_config = self.attack_config.get('attack_types', [])
+        
+        if isinstance(attack_types_config, list):
+            # 旧格式：等概率分配
+            num_types = len(attack_types_config)
+            return {attack_type: 1.0/num_types for attack_type in attack_types_config}
+        elif isinstance(attack_types_config, dict):
+            # 新格式：使用配置的比例
+            total = sum(attack_types_config.values())
+            if abs(total - 1.0) > 0.01:  # 允许小的舍入误差
+                self.logger.warning(f"攻击类型比例总和为 {total:.3f}，将自动标准化为 1.0")
+                return {k: v/total for k, v in attack_types_config.items()}
+            return attack_types_config
+        else:
+            raise ValueError("Invalid attack_types configuration")
+
+    def generate_attack_samples(self, clean_pdfs: List[str]) -> List[str]:
+        """根据配置比例生成攻击样本"""
+        attack_ratio = self.attack_config.get('attack_ratio', 0.3)
+        total_attack_samples = int(len(clean_pdfs) * attack_ratio)
+        
+        # 解析攻击类型比例
+        attack_proportions = self._parse_attack_types()
+        generation_strategy = self.attack_config.get('generation_strategy', {})
+        mode = generation_strategy.get('mode', 'proportional')
+        
+        if mode == 'proportional':
+            return self._generate_proportional_samples(clean_pdfs, total_attack_samples, attack_proportions)
+        elif mode == 'balanced':
+            return self._generate_balanced_samples(clean_pdfs, total_attack_samples, attack_proportions)
+        else:  # random
+            return self._generate_random_samples(clean_pdfs, total_attack_samples, list(attack_proportions.keys()))
+
+    def _generate_proportional_samples(self, clean_pdfs: List[str], total_samples: int, 
+                                    attack_proportions: Dict[str, float]) -> List[str]:
+        """按比例生成攻击样本"""
+        generation_strategy = self.attack_config.get('generation_strategy', {})
+        min_samples = generation_strategy.get('min_samples_per_type', 1)
+        max_samples = generation_strategy.get('max_samples_per_type', 50)
+        
+        # 计算每种攻击类型的目标数量
+        target_counts = {}
+        for attack_type, proportion in attack_proportions.items():
+            target_count = int(total_samples * proportion)
+            target_count = max(min_samples, min(max_samples, target_count))
+            target_counts[attack_type] = target_count
+        
+        # 调整总数以匹配目标
+        actual_total = sum(target_counts.values())
+        if actual_total != total_samples:
+            # 按比例调整
+            adjustment_factor = total_samples / actual_total
+            for attack_type in target_counts:
+                target_counts[attack_type] = max(min_samples, 
+                                            int(target_counts[attack_type] * adjustment_factor))
+        
+        self.logger.info("攻击样本生成计划:")
+        for attack_type, count in target_counts.items():
+            percentage = (count / sum(target_counts.values()) * 100)
+            self.logger.info(f"  {attack_type}: {count} ({percentage:.1f}%)")
+        
+        # 生成样本
+        generated_samples = []
+        attack_type_counts = {attack_type: 0 for attack_type in target_counts}
+        selected_pdfs = random.sample(clean_pdfs, min(sum(target_counts.values()), len(clean_pdfs)))
+        
+        pdf_index = 0
+        with ProgressTracker(sum(target_counts.values()), "生成攻击样本") as progress:
+            for attack_type, target_count in target_counts.items():
+                for _ in range(target_count):
+                    if pdf_index >= len(selected_pdfs):
+                        self.logger.warning("PDF文件不足，无法生成所有攻击样本")
+                        break
+                    
+                    try:
+                        pdf_path = selected_pdfs[pdf_index]
+                        language = random.choice(list(self.prompt_templates.keys()))
+                        
+                        output_path = self.generate_single_attack(pdf_path, attack_type, language)
+                        if output_path:
+                            generated_samples.append(output_path)
+                            attack_type_counts[attack_type] += 1
+                            
+                            self.attack_samples.append({
+                                'original_file': pdf_path,
+                                'attack_file': output_path,
+                                'attack_type': attack_type,
+                                'language': language,
+                                'file_size': os.path.getsize(output_path) if os.path.exists(output_path) else 0
+                            })
+                        
+                        pdf_index += 1
+                        progress.update()
+                        
+                    except Exception as e:
+                        self.logger.error(f"生成攻击样本失败 {pdf_path}: {e}")
+                        pdf_index += 1
+                        progress.update()
+                        continue
+        
+        # 打印实际生成统计
+        self.logger.info("攻击样本实际生成统计:")
+        total_generated = sum(attack_type_counts.values())
+        for attack_type, count in attack_type_counts.items():
+            percentage = (count / total_generated * 100) if total_generated > 0 else 0
+            self.logger.info(f"  {attack_type}: {count} ({percentage:.1f}%)")
+        
+        return generated_samples
+
 class AdvancedAttackGenerator(AttackSampleGenerator):
     """高级攻击生成器"""
     
@@ -422,3 +533,4 @@ class AdvancedAttackGenerator(AttackSampleGenerator):
         except Exception as e:
             logger.error(f"上下文攻击注入失败 {output_pdf}: {e}")
             return False
+

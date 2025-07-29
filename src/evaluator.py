@@ -4,7 +4,7 @@ from typing import List, Dict, Tuple, Any, Optional
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     roc_auc_score, confusion_matrix, classification_report,
-    precision_recall_curve, roc_curve
+    precision_recall_curve, roc_curve, auc
 )
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -56,7 +56,8 @@ class ExperimentEvaluator:
                     'detection_count': result['detection_count'],
                     'file_type': 'clean',
                     'attack_type': None,
-                    'language': None
+                    'language': None,
+                    'detections': result.get('detections', [])  # 保存详细检测信息
                 }
                 
                 # 添加详细检测信息
@@ -92,8 +93,9 @@ class ExperimentEvaluator:
                     'risk_score': result['risk_score'],
                     'detection_count': result['detection_count'],
                     'file_type': 'attack',
-                    'attack_type': attack_details.get('attack_type', 'unknown'),
-                    'language': attack_details.get('language', 'unknown')
+                    'attack_type': attack_details.get('attack_type', self._extract_attack_type_from_filename(file_path)),
+                    'language': attack_details.get('language', self._extract_language_from_filename(file_path)),
+                    'detections': result.get('detections', [])
                 }
                 
                 # 添加详细检测信息
@@ -124,6 +126,36 @@ class ExperimentEvaluator:
         logger.info("性能评估完成")
         return df_results, metrics
     
+    def _extract_attack_type_from_filename(self, file_path: str) -> str:
+        """从文件名提取攻击类型"""
+        filename = Path(file_path).name.lower()
+        if 'white_text' in filename:
+            return 'white_text'
+        elif 'metadata' in filename:
+            return 'metadata'
+        elif 'invisible' in filename:
+            return 'invisible_chars'
+        elif 'mixed' in filename:
+            return 'mixed_language'
+        elif 'steganographic' in filename:
+            return 'steganographic'
+        else:
+            return 'unknown'
+    
+    def _extract_language_from_filename(self, file_path: str) -> str:
+        """从文件名提取语言"""
+        filename = Path(file_path).name.lower()
+        if 'english' in filename:
+            return 'english'
+        elif 'chinese' in filename:
+            return 'chinese'
+        elif 'japanese' in filename:
+            return 'japanese'
+        elif 'mixed' in filename:
+            return 'mixed'
+        else:
+            return 'unknown'
+    
     def _calculate_metrics(self, df_results: pd.DataFrame) -> Dict[str, Any]:
         """计算评估指标"""
         y_true = df_results['label'].values
@@ -137,8 +169,8 @@ class ExperimentEvaluator:
             'recall': recall_score(y_true, y_pred, zero_division=0),
             'f1_score': f1_score(y_true, y_pred, zero_division=0),
             'support': {
-                'clean': np.sum(y_true == 0),
-                'attack': np.sum(y_true == 1)
+                'clean': int(np.sum(y_true == 0)),
+                'attack': int(np.sum(y_true == 1))
             }
         }
         
@@ -173,28 +205,30 @@ class ExperimentEvaluator:
         if 'attack_type' in df_results.columns:
             attack_performance = {}
             for attack_type in df_results['attack_type'].dropna().unique():
-                mask = df_results['attack_type'] == attack_type
-                if mask.sum() > 0:
-                    attack_data = df_results[mask]
-                    attack_performance[attack_type] = {
-                        'count': len(attack_data),
-                        'detection_rate': attack_data['predicted'].mean(),
-                        'avg_risk_score': attack_data['risk_score'].mean()
-                    }
+                if attack_type and attack_type != 'unknown':
+                    mask = df_results['attack_type'] == attack_type
+                    if mask.sum() > 0:
+                        attack_data = df_results[mask]
+                        attack_performance[attack_type] = {
+                            'count': len(attack_data),
+                            'detection_rate': attack_data['predicted'].mean(),
+                            'avg_risk_score': attack_data['risk_score'].mean()
+                        }
             metrics['performance_by_attack_type'] = attack_performance
         
         # 按语言的性能
         if 'language' in df_results.columns:
             language_performance = {}
             for language in df_results['language'].dropna().unique():
-                mask = df_results['language'] == language
-                if mask.sum() > 0:
-                    lang_data = df_results[mask]
-                    language_performance[language] = {
-                        'count': len(lang_data),
-                        'detection_rate': lang_data['predicted'].mean(),
-                        'avg_risk_score': lang_data['risk_score'].mean()
-                    }
+                if language and language != 'unknown':
+                    mask = df_results['language'] == language
+                    if mask.sum() > 0:
+                        lang_data = df_results[mask]
+                        language_performance[language] = {
+                            'count': len(lang_data),
+                            'detection_rate': lang_data['predicted'].mean(),
+                            'avg_risk_score': lang_data['risk_score'].mean()
+                        }
             metrics['performance_by_language'] = language_performance
         
         return metrics
@@ -215,173 +249,553 @@ class ExperimentEvaluator:
     
     def plot_performance_analysis(self, df_results: pd.DataFrame, 
                                 metrics: Dict, save_plots: bool = True) -> Dict[str, Any]:
-        """绘制性能分析图表"""
+        """绘制性能分析图表 - 分离版本"""
         
         config = self.config['experiment']['visualization']
-        figsize = tuple(config['figsize'])
-        dpi = config['dpi']
+        figsize = tuple(config.get('figsize', [12, 8]))
+        dpi = config.get('dpi', 300)
         
-        # 创建图表
-        fig = plt.figure(figsize=(20, 15))
+        # 创建输出目录
+        if save_plots:
+            timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+            plots_dir = Path(self.output_dir) / f"plots_{timestamp}"
+            plots_dir.mkdir(parents=True, exist_ok=True)
         
-        # 1. 混淆矩阵 (2x3 grid, position 1)
-        ax1 = plt.subplot(3, 4, 1)
-        cm = metrics['confusion_matrix']
+        plot_files = {}
+        
+        # 1. 混淆矩阵
+        logger.info("生成混淆矩阵...")
+        fig1, ax1 = plt.subplots(figsize=(8, 6))
+        cm = np.array(metrics['confusion_matrix'])
+        
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax1,
                    xticklabels=['Normal', 'Attack'],
-                   yticklabels=['Normal', 'Attack'])
-        ax1.set_title('Confusion Matrix')
-        ax1.set_xlabel('Predicted')
-        ax1.set_ylabel('Actual')
+                   yticklabels=['Normal', 'Attack'],
+                   cbar_kws={'label': 'Count'},
+                   annot_kws={'size': 16, 'weight': 'bold'})
         
-        # 2. 风险分数分布 (position 2)
-        ax2 = plt.subplot(3, 4, 2)
+        ax1.set_title('Confusion Matrix', fontsize=16, fontweight='bold', pad=20)
+        ax1.set_xlabel('Predicted Label', fontsize=12)
+        ax1.set_ylabel('True Label', fontsize=12)
+        
+        # 添加准确率信息
+        accuracy = metrics['accuracy']
+        ax1.text(0.5, -0.15, f'Accuracy: {accuracy:.3f}', 
+                 ha='center', transform=ax1.transAxes, fontsize=14, fontweight='bold')
+        
+        plt.tight_layout()
+        if save_plots:
+            plot_file = plots_dir / "01_confusion_matrix.png"
+            plt.savefig(plot_file, dpi=dpi, bbox_inches='tight')
+            plot_files['confusion_matrix'] = plot_file
+            logger.info(f"混淆矩阵已保存: {plot_file}")
+        plt.show()
+        plt.close()
+        
+        # 2. 风险分数分布
+        logger.info("生成风险分数分布图...")
+        fig2, ax2 = plt.subplots(figsize=(12, 6))
         clean_scores = df_results[df_results['label']==0]['risk_score']
         attack_scores = df_results[df_results['label']==1]['risk_score']
         
-        ax2.hist(clean_scores, alpha=0.7, label='Normal Files', bins=20, density=True)
-        ax2.hist(attack_scores, alpha=0.7, label='Attack Files', bins=20, density=True)
-        ax2.axvline(x=self.config['detection']['thresholds']['risk_score'], 
-                   color='red', linestyle='--', label='Threshold')
-        ax2.set_title('Risk Score Distribution')
-        ax2.set_xlabel('Risk Score')
-        ax2.set_ylabel('Density')
-        ax2.legend()
+        # 绘制直方图
+        bins = np.linspace(0, 1, 21)
+        alpha = 0.7
         
-        # 3. 性能指标条形图 (position 3)
-        ax3 = plt.subplot(3, 4, 3)
+        if len(clean_scores) > 0:
+            ax2.hist(clean_scores, alpha=alpha, label=f'Normal Files (n={len(clean_scores)})', 
+                     bins=bins, density=True, color='skyblue', edgecolor='navy', linewidth=1)
+        
+        if len(attack_scores) > 0:
+            ax2.hist(attack_scores, alpha=alpha, label=f'Attack Files (n={len(attack_scores)})', 
+                     bins=bins, density=True, color='lightcoral', edgecolor='darkred', linewidth=1)
+        
+        # 添加阈值线
+        threshold = self.config['detection']['thresholds']['risk_score']
+        ax2.axvline(x=threshold, color='red', linestyle='--', linewidth=3, 
+                   label=f'Threshold ({threshold})')
+        
+        ax2.set_title('Risk Score Distribution', fontsize=16, fontweight='bold')
+        ax2.set_xlabel('Risk Score', fontsize=12)
+        ax2.set_ylabel('Density', fontsize=12)
+        ax2.legend(fontsize=11, loc='upper left')
+        ax2.grid(True, alpha=0.3)
+        
+        # 添加统计信息
+        if len(clean_scores) > 0 and len(attack_scores) > 0:
+            stats_text = f"""Normal Files:
+Mean: {clean_scores.mean():.3f}
+Std: {clean_scores.std():.3f}
+
+Attack Files:
+Mean: {attack_scores.mean():.3f}
+Std: {attack_scores.std():.3f}"""
+            
+            ax2.text(0.02, 0.98, stats_text, transform=ax2.transAxes, 
+                     verticalalignment='top', fontsize=10,
+                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        
+        plt.tight_layout()
+        if save_plots:
+            plot_file = plots_dir / "02_risk_score_distribution.png"
+            plt.savefig(plot_file, dpi=dpi, bbox_inches='tight')
+            plot_files['risk_distribution'] = plot_file
+            logger.info(f"风险分数分布图已保存: {plot_file}")
+        plt.show()
+        plt.close()
+        
+        # 3. 性能指标条形图
+        logger.info("生成性能指标图...")
+        fig3, ax3 = plt.subplots(figsize=(12, 6))
         metric_names = ['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC']
         metric_values = [
             metrics['accuracy'], metrics['precision'], 
             metrics['recall'], metrics['f1_score'], metrics['roc_auc']
         ]
         
-        bars = ax3.bar(metric_names, metric_values, color=['skyblue', 'lightgreen', 'orange', 'pink', 'lightcoral'])
-        ax3.set_title('Performance Metrics')
-        ax3.set_ylabel('Score')
-        ax3.set_ylim(0, 1)
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+        bars = ax3.bar(metric_names, metric_values, color=colors, alpha=0.8, 
+                      edgecolor='black', linewidth=1.5)
         
-        # 在条形图上添加数值
+        # 添加数值标签
         for bar, value in zip(bars, metric_values):
             height = bar.get_height()
             ax3.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                    f'{value:.3f}', ha='center', va='bottom')
+                    f'{value:.3f}', ha='center', va='bottom', fontweight='bold', fontsize=12)
         
-        plt.xticks(rotation=45)
+        ax3.set_title('Performance Metrics', fontsize=16, fontweight='bold')
+        ax3.set_ylabel('Score', fontsize=12)
+        ax3.set_ylim(0, 1.1)
+        ax3.grid(True, alpha=0.3, axis='y')
         
-        # 4. 检测数量箱线图 (position 4)
-        ax4 = plt.subplot(3, 4, 4)
-        detection_data = [
-            df_results[df_results['label']==0]['detection_count'],
-            df_results[df_results['label']==1]['detection_count']
-        ]
-        ax4.boxplot(detection_data, labels=['Normal', 'Attack'])
-        ax4.set_title('Detection Count Distribution')
-        ax4.set_ylabel('Number of Detections')
+        # 添加基准线
+        ax3.axhline(y=0.8, color='red', linestyle=':', alpha=0.7, linewidth=2, 
+                   label='Good Baseline (0.8)')
+        ax3.legend(loc='upper right')
         
-        # 5. ROC曲线 (position 5)
-        ax5 = plt.subplot(3, 4, 5)
+        plt.xticks(rotation=0)
+        plt.tight_layout()
+        if save_plots:
+            plot_file = plots_dir / "03_performance_metrics.png"
+            plt.savefig(plot_file, dpi=dpi, bbox_inches='tight')
+            plot_files['performance_metrics'] = plot_file
+            logger.info(f"性能指标图已保存: {plot_file}")
+        plt.show()
+        plt.close()
+        
+        # 4. ROC曲线和PR曲线
+        logger.info("生成ROC和PR曲线...")
+        fig4, (ax4_1, ax4_2) = plt.subplots(1, 2, figsize=(15, 6))
+        
         try:
+            # ROC曲线
             fpr, tpr, _ = roc_curve(df_results['label'], df_results['risk_score'])
-            ax5.plot(fpr, tpr, color='darkorange', lw=2, 
-                    label=f'ROC curve (AUC = {metrics["roc_auc"]:.3f})')
-            ax5.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-            ax5.set_xlim([0.0, 1.0])
-            ax5.set_ylim([0.0, 1.05])
-            ax5.set_xlabel('False Positive Rate')
-            ax5.set_ylabel('True Positive Rate')
-            ax5.set_title('ROC Curve')
-            ax5.legend(loc="lower right")
-        except Exception as e:
-            ax5.text(0.5, 0.5, f'ROC curve error: {str(e)}', 
-                    ha='center', va='center', transform=ax5.transAxes)
-        
-        # 6. 精确率-召回率曲线 (position 6)
-        ax6 = plt.subplot(3, 4, 6)
-        try:
+            roc_auc = auc(fpr, tpr)
+            
+            ax4_1.plot(fpr, tpr, color='darkorange', lw=3, 
+                      label=f'ROC Curve (AUC = {roc_auc:.3f})')
+            ax4_1.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', 
+                      label='Random Classifier')
+            ax4_1.set_xlim([0.0, 1.0])
+            ax4_1.set_ylim([0.0, 1.05])
+            ax4_1.set_xlabel('False Positive Rate', fontsize=12)
+            ax4_1.set_ylabel('True Positive Rate', fontsize=12)
+            ax4_1.set_title('ROC Curve', fontsize=14, fontweight='bold')
+            ax4_1.legend(loc="lower right")
+            ax4_1.grid(True, alpha=0.3)
+            
+            # PR曲线
             precision_curve, recall_curve, _ = precision_recall_curve(
                 df_results['label'], df_results['risk_score'])
-            ax6.plot(recall_curve, precision_curve, color='blue', lw=2)
-            ax6.set_xlabel('Recall')
-            ax6.set_ylabel('Precision')
-            ax6.set_title('Precision-Recall Curve')
-            ax6.set_xlim([0.0, 1.0])
-            ax6.set_ylim([0.0, 1.05])
+            pr_auc = auc(recall_curve, precision_curve)
+            
+            ax4_2.plot(recall_curve, precision_curve, color='blue', lw=3,
+                      label=f'PR Curve (AUC = {pr_auc:.3f})')
+            ax4_2.set_xlabel('Recall', fontsize=12)
+            ax4_2.set_ylabel('Precision', fontsize=12)
+            ax4_2.set_title('Precision-Recall Curve', fontsize=14, fontweight='bold')
+            ax4_2.set_xlim([0.0, 1.0])
+            ax4_2.set_ylim([0.0, 1.05])
+            ax4_2.legend()
+            ax4_2.grid(True, alpha=0.3)
+            
         except Exception as e:
-            ax6.text(0.5, 0.5, f'PR curve error: {str(e)}', 
-                    ha='center', va='center', transform=ax6.transAxes)
+            logger.error(f"ROC/PR曲线生成失败: {e}")
+            ax4_1.text(0.5, 0.5, f'ROC curve error: {str(e)}', 
+                      ha='center', va='center', transform=ax4_1.transAxes)
+            ax4_2.text(0.5, 0.5, f'PR curve error: {str(e)}', 
+                      ha='center', va='center', transform=ax4_2.transAxes)
         
-        # 7. 按攻击类型的性能 (position 7-8)
-        if 'performance_by_attack_type' in metrics:
-            ax7 = plt.subplot(3, 4, (7, 8))
+        plt.tight_layout()
+        if save_plots:
+            plot_file = plots_dir / "04_roc_pr_curves.png"
+            plt.savefig(plot_file, dpi=dpi, bbox_inches='tight')
+            plot_files['roc_pr_curves'] = plot_file
+            logger.info(f"ROC和PR曲线已保存: {plot_file}")
+        plt.show()
+        plt.close()
+        
+        # 5. 按攻击类型的性能
+        if 'performance_by_attack_type' in metrics and metrics['performance_by_attack_type']:
+            logger.info("生成攻击类型性能图...")
+            fig5, ax5 = plt.subplots(figsize=(12, 6))
             attack_types = list(metrics['performance_by_attack_type'].keys())
             detection_rates = [metrics['performance_by_attack_type'][at]['detection_rate'] 
-                             for at in attack_types]
+                              for at in attack_types]
+            counts = [metrics['performance_by_attack_type'][at]['count'] 
+                     for at in attack_types]
             
-            bars = ax7.bar(attack_types, detection_rates, color='lightblue')
-            ax7.set_title('Detection Rate by Attack Type')
-            ax7.set_ylabel('Detection Rate')
-            ax7.set_ylim(0, 1)
-            plt.xticks(rotation=45)
+            bars = ax5.bar(attack_types, detection_rates, color='lightblue', 
+                          alpha=0.8, edgecolor='darkblue', linewidth=1.5)
             
-            # 添加数值标签
-            for bar, rate in zip(bars, detection_rates):
+            # 添加样本数量标签
+            for bar, rate, count in zip(bars, detection_rates, counts):
                 height = bar.get_height()
-                ax7.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                        f'{rate:.3f}', ha='center', va='bottom')
+                ax5.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                        f'{rate:.3f}\n(n={count})', ha='center', va='bottom', 
+                        fontweight='bold')
+            
+            ax5.set_title('Detection Rate by Attack Type', fontsize=16, fontweight='bold')
+            ax5.set_ylabel('Detection Rate', fontsize=12)
+            ax5.set_ylim(0, 1.1)
+            ax5.grid(True, alpha=0.3, axis='y')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            if save_plots:
+                plot_file = plots_dir / "05_attack_type_performance.png"
+                plt.savefig(plot_file, dpi=dpi, bbox_inches='tight')
+                plot_files['attack_type_performance'] = plot_file
+                logger.info(f"攻击类型性能图已保存: {plot_file}")
+            plt.show()
+            plt.close()
         
-        # 8. 按语言的性能 (position 9-10)
-        if 'performance_by_language' in metrics:
-            ax8 = plt.subplot(3, 4, (9, 10))
+        # 6. 按语言的性能
+        if 'performance_by_language' in metrics and metrics['performance_by_language']:
+            logger.info("生成语言性能图...")
+            fig6, ax6 = plt.subplots(figsize=(10, 6))
             languages = list(metrics['performance_by_language'].keys())
             detection_rates = [metrics['performance_by_language'][lang]['detection_rate'] 
-                             for lang in languages]
+                              for lang in languages]
+            avg_scores = [metrics['performance_by_language'][lang]['avg_risk_score'] 
+                         for lang in languages]
+            counts = [metrics['performance_by_language'][lang]['count'] 
+                     for lang in languages]
             
-            bars = ax8.bar(languages, detection_rates, color='lightgreen')
-            ax8.set_title('Detection Rate by Language')
-            ax8.set_ylabel('Detection Rate')
-            ax8.set_ylim(0, 1)
-            plt.xticks(rotation=45)
+            # 双y轴图
+            ax6_twin = ax6.twinx()
             
-            # 添加数值标签
-            for bar, rate in zip(bars, detection_rates):
-                height = bar.get_height()
-                ax8.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                        f'{rate:.3f}', ha='center', va='bottom')
+            x_pos = np.arange(len(languages))
+            width = 0.35
+            
+            bars1 = ax6.bar(x_pos - width/2, detection_rates, width, 
+                           label='Detection Rate', color='lightblue', alpha=0.8,
+                           edgecolor='darkblue')
+            bars2 = ax6_twin.bar(x_pos + width/2, avg_scores, width,
+                                label='Avg Risk Score', color='lightcoral', alpha=0.8,
+                                edgecolor='darkred')
+            
+            # 添加标签
+            for i, (bar1, bar2, rate, score, count) in enumerate(zip(bars1, bars2, detection_rates, avg_scores, counts)):
+                ax6.text(bar1.get_x() + bar1.get_width()/2., bar1.get_height() + 0.01,
+                        f'{rate:.3f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+                ax6_twin.text(bar2.get_x() + bar2.get_width()/2., bar2.get_height() + 0.01,
+                             f'{score:.3f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+                ax6.text(i, -0.15, f'n={count}', ha='center', va='top', 
+                        transform=ax6.get_xaxis_transform(), fontsize=9)
+            
+            ax6.set_title('Performance by Language', fontsize=16, fontweight='bold')
+            ax6.set_ylabel('Detection Rate', fontsize=12, color='blue')
+            ax6_twin.set_ylabel('Average Risk Score', fontsize=12, color='red')
+            ax6.set_xticks(x_pos)
+            ax6.set_xticklabels(languages)
+            ax6.set_ylim(0, 1.1)
+            ax6_twin.set_ylim(0, 1.1)
+            
+            # 图例
+            lines1, labels1 = ax6.get_legend_handles_labels()
+            lines2, labels2 = ax6_twin.get_legend_handles_labels()
+            ax6.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+            
+            ax6.grid(True, alpha=0.3, axis='y')
+            plt.tight_layout()
+            if save_plots:
+                plot_file = plots_dir / "06_language_performance.png"
+                plt.savefig(plot_file, dpi=dpi, bbox_inches='tight')
+                plot_files['language_performance'] = plot_file
+                logger.info(f"语言性能图已保存: {plot_file}")
+            plt.show()
+            plt.close()
         
-        # 9. 风险分数散点图 (position 11-12)
-        ax9 = plt.subplot(3, 4, (11, 12))
+        # 7. 风险分数散点图
+        logger.info("生成风险分数散点图...")
+        fig7, ax7 = plt.subplots(figsize=(14, 6))
         
         # 正常文件
         clean_data = df_results[df_results['label']==0]
-        ax9.scatter(range(len(clean_data)), clean_data['risk_score'], 
-                   alpha=0.6, label='Normal Files', color='blue', s=10)
+        if len(clean_data) > 0:
+            ax7.scatter(range(len(clean_data)), clean_data['risk_score'], 
+                       alpha=0.7, label=f'Normal Files (n={len(clean_data)})', 
+                       color='blue', s=40, marker='o', edgecolors='darkblue')
         
         # 攻击文件
         attack_data = df_results[df_results['label']==1]
-        ax9.scatter(range(len(clean_data), len(clean_data) + len(attack_data)), 
-                   attack_data['risk_score'], alpha=0.6, label='Attack Files', 
-                   color='red', s=10)
+        if len(attack_data) > 0:
+            attack_start = len(clean_data) if len(clean_data) > 0 else 0
+            ax7.scatter(range(attack_start, attack_start + len(attack_data)), 
+                       attack_data['risk_score'], alpha=0.7, 
+                       label=f'Attack Files (n={len(attack_data)})', 
+                       color='red', s=40, marker='^', edgecolors='darkred')
         
-        ax9.axhline(y=self.config['detection']['thresholds']['risk_score'], 
-                   color='green', linestyle='--', label='Threshold')
-        ax9.set_title('Risk Score Distribution by File')
-        ax9.set_xlabel('File Index')
-        ax9.set_ylabel('Risk Score')
-        ax9.legend()
+        # 阈值线
+        threshold = self.config['detection']['thresholds']['risk_score']
+        ax7.axhline(y=threshold, color='green', linestyle='--', linewidth=3,
+                   label=f'Threshold ({threshold})')
+        
+        ax7.set_title('Risk Score Distribution by File', fontsize=16, fontweight='bold')
+        ax7.set_xlabel('File Index', fontsize=12)
+        ax7.set_ylabel('Risk Score', fontsize=12)
+        ax7.legend(fontsize=11)
+        ax7.grid(True, alpha=0.3)
+        ax7.set_ylim(-0.05, 1.05)
         
         plt.tight_layout()
-        
-        # 保存图表
         if save_plots:
-            timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-            plot_file = Path(self.output_dir) / f"performance_analysis_{timestamp}.png"
+            plot_file = plots_dir / "07_risk_score_scatter.png"
             plt.savefig(plot_file, dpi=dpi, bbox_inches='tight')
-            logger.info(f"性能分析图表已保存: {plot_file}")
-        
+            plot_files['risk_score_scatter'] = plot_file
+            logger.info(f"风险分数散点图已保存: {plot_file}")
         plt.show()
+        plt.close()
         
-        return {'figure': fig}
+        # 8. 检测类型统计
+        logger.info("生成检测类型统计图...")
+        fig8, ax8 = plt.subplots(figsize=(12, 8))
+        
+        # 统计检测类型
+        detection_type_counts = {}
+        for _, result in df_results.iterrows():
+            for detection in result.get('detections', []):
+                det_type = detection.get('type', 'unknown')
+                detection_type_counts[det_type] = detection_type_counts.get(det_type, 0) + 1
+        
+        if detection_type_counts:
+            # 按数量排序
+            sorted_items = sorted(detection_type_counts.items(), key=lambda x: x[1], reverse=True)
+            types = [item[0] for item in sorted_items]
+            counts = [item[1] for item in sorted_items]
+            
+            # 横向条形图
+            bars = ax8.barh(types, counts, color='lightgreen', alpha=0.8, 
+                           edgecolor='darkgreen', linewidth=1.5)
+            
+            # 添加数值标签
+            for bar, count in zip(bars, counts):
+                width = bar.get_width()
+                ax8.text(width + max(counts) * 0.01, bar.get_y() + bar.get_height()/2.,
+                        f'{count}', ha='left', va='center', fontweight='bold', fontsize=11)
+            
+            ax8.set_title('Detection Type Frequency', fontsize=16, fontweight='bold')
+            ax8.set_xlabel('Count', fontsize=12)
+            ax8.set_ylabel('Detection Type', fontsize=12)
+            ax8.grid(True, alpha=0.3, axis='x')
+            
+            plt.tight_layout()
+            if save_plots:
+                plot_file = plots_dir / "08_detection_type_stats.png"
+                plt.savefig(plot_file, dpi=dpi, bbox_inches='tight')
+                plot_files['detection_type_stats'] = plot_file
+                logger.info(f"检测类型统计图已保存: {plot_file}")
+            plt.show()
+            plt.close()
+        
+        # 9. 检测数量分布
+        logger.info("生成检测数量分布图...")
+        fig9, ax9 = plt.subplots(figsize=(10, 6))
+        
+        clean_detection_counts = df_results[df_results['label']==0]['detection_count']
+        attack_detection_counts = df_results[df_results['label']==1]['detection_count']
+        
+        box_data = []
+        labels = []
+        if len(clean_detection_counts) > 0:
+            box_data.append(clean_detection_counts)
+            labels.append(f'Normal\n(n={len(clean_detection_counts)})')
+        
+        if len(attack_detection_counts) > 0:
+            box_data.append(attack_detection_counts)
+            labels.append(f'Attack\n(n={len(attack_detection_counts)})')
+        
+        if box_data:
+            bp = ax9.boxplot(box_data, labels=labels, patch_artist=True)
+            
+            # 设置颜色
+            colors = ['lightblue', 'lightcoral']
+            for patch, color in zip(bp['boxes'], colors[:len(bp['boxes'])]):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.8)
+        
+        ax9.set_title('Detection Count Distribution', fontsize=16, fontweight='bold')
+        ax9.set_ylabel('Number of Detections', fontsize=12)
+        ax9.grid(True, alpha=0.3, axis='y')
+        
+        plt.tight_layout()
+        if save_plots:
+            plot_file = plots_dir / "09_detection_count_distribution.png"
+            plt.savefig(plot_file, dpi=dpi, bbox_inches='tight')
+            plot_files['detection_count_distribution'] = plot_file
+            logger.info(f"检测数量分布图已保存: {plot_file}")
+        plt.show()
+        plt.close()
+        
+        # 生成图表索引HTML文件
+        if save_plots:
+            self._generate_plots_index(plots_dir, plot_files, metrics)
+            logger.info(f"所有图表已保存到: {plots_dir}")
+        
+        return {'plots_directory': plots_dir if save_plots else None, 'plot_files': plot_files}
+    
+    def _generate_plots_index(self, plots_dir: Path, plot_files: Dict[str, Path], metrics: Dict):
+        """生成图表索引HTML文件"""
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Detection Performance Analysis Report</title>
+    <meta charset="UTF-8">
+    <style>
+        body {{ 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background-color: #f5f5f5;
+        }}
+        .header {{
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }}
+        .metrics-summary {{
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+        .metrics-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }}
+        .metric-card {{
+            background-color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }}
+        .metric-value {{
+            font-size: 24px;
+            font-weight: bold;
+            color: #27ae60;
+        }}
+        .plot-container {{ 
+            margin: 20px 0; 
+            padding: 20px; 
+            border: 1px solid #ddd; 
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+        .plot-title {{ 
+            font-size: 18px; 
+            font-weight: bold; 
+            margin-bottom: 10px; 
+            color: #2c3e50;
+        }}
+        img {{ 
+            max-width: 100%; 
+            height: auto; 
+            border-radius: 5px;
+        }}
+        .timestamp {{
+            color: #7f8c8d;
+            font-style: italic;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Detection Performance Analysis Report</h1>
+        <p class="timestamp">Generated: {pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+    </div>
+    
+    <div class="metrics-summary">
+        <h2>📈 Performance Summary</h2>
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">{metrics.get('accuracy', 0):.3f}</div>
+                <div>Accuracy</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{metrics.get('precision', 0):.3f}</div>
+                <div>Precision</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{metrics.get('recall', 0):.3f}</div>
+                <div>Recall</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{metrics.get('f1_score', 0):.3f}</div>
+                <div>F1-Score</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{metrics.get('roc_auc', 0):.3f}</div>
+                <div>ROC AUC</div>
+            </div>
+        </div>
+        
+        <h3>📁 Dataset Information</h3>
+        <p>Total Files: {metrics.get('support', {}).get('clean', 0) + metrics.get('support', {}).get('attack', 0)}</p>
+        <p>Normal Files: {metrics.get('support', {}).get('clean', 0)} | Attack Files: {metrics.get('support', {}).get('attack', 0)}</p>
+    </div>
+"""
+        
+        plot_descriptions = {
+            'confusion_matrix': '🎯 混淆矩阵 - 显示分类准确性，真阳性、假阳性、真阴性、假阴性的分布',
+            'risk_distribution': '📊 风险分数分布 - 正常文件 vs 攻击文件的风险分数对比分析',
+            'performance_metrics': '📈 性能指标 - 准确率、精确率、召回率、F1分数、ROC AUC等关键指标',
+            'roc_pr_curves': '📉 ROC和PR曲线 - 分类器在不同阈值下的性能评估曲线',
+            'attack_type_performance': '🎭 攻击类型性能 - 按不同攻击类型分析的检测成功率',
+            'language_performance': '🌍 语言性能分析 - 按不同语言分析的检测效果对比',
+            'risk_score_scatter': '🔍 风险分数散点图 - 每个文件的风险分数分布可视化',
+            'detection_type_stats': '📋 检测类型统计 - 各种检测机制的触发频率统计',
+            'detection_count_distribution': '📦 检测数量分布 - 正常文件 vs 攻击文件的检测次数箱线图'
+        }
+        
+        for plot_key, plot_file in plot_files.items():
+            if plot_file.exists():
+                description = plot_descriptions.get(plot_key, plot_key)
+                html_content += f"""
+            <div class="plot-container">
+                <div class="plot-title">{description}</div>
+                <img src="{plot_file.name}" alt="{description}">
+            </div>
+            """
+        
+        html_content += """
+    <div style="text-align: center; margin-top: 40px; color: #7f8c8d;">
+        <p>📧 Generated by Paper Review Attack Detection System</p>
+    </div>
+</body>
+</html>
+"""
+        
+        html_file = plots_dir / "index.html"
+        with open(html_file, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        logger.info(f"📋 图表索引已生成: {html_file}")
     
     def generate_report(self, df_results: pd.DataFrame, metrics: Dict) -> str:
         """生成详细报告"""

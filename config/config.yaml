@@ -15,13 +15,22 @@ data_collection:
 attack_generation:
   output_dir: "./data/attack_samples"
   attack_ratio: 0.5  # 50%的论文用于生成攻击样本
+  
+  # 攻击类型及其比例配置（新增）
   attack_types:
-    - "white_text"
-    - "metadata"
-    - "invisible_chars"
-    - "mixed_language"
-    - "steganographic"      
-    - "contextual_attack"   
+    white_text: 0.30        # 30% - 最常见的攻击
+    metadata: 0.25          # 25% - 容易实施
+    invisible_chars: 0.20   # 20% - 技术性较强
+    mixed_language: 0.15    # 15% - 需要多语言知识
+    steganographic: 0.07    # 7% - 高级攻击
+    contextual_attack: 0.03 # 3% - 最复杂的攻击
+  
+  # 攻击生成策略（新增）
+  generation_strategy:
+    mode: "proportional"    # "proportional" 或 "balanced" 或 "random"
+    min_samples_per_type: 1 # 每种攻击类型至少生成的样本数
+    max_samples_per_type: 50 # 每种攻击类型最多生成的样本数
+  
   # 提示词模板
   prompt_templates:
     english:
@@ -56,6 +65,10 @@ attack_generation:
 
 # 检测配置
 detection:
+  # 离线模式配置（新增）
+  offline_mode: true
+  local_model_dir: "./models"
+  
   models:
     sentiment_model: "cardiffnlp/twitter-xlm-roberta-base-sentiment"
     multilingual_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -115,4 +128,3 @@ experiment:
     figsize: [15, 10]
     dpi: 300
     save_format: "png"
-

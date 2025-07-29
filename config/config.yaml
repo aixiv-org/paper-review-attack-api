@@ -1,25 +1,27 @@
 # 数据收集配置
 data_collection:
   download_dir: "./data/clean_papers"
-  max_papers: 100
+  max_papers: 300
   search_queries:
     - "cat:cs.AI"
     - "cat:cs.CL"
     - "cat:cs.LG"
     - "cat:cs.CV"
-  papers_per_query: 25
+    - "cat:cs.CR"
+  papers_per_query: 60
   delay_between_downloads: 1.0
 
 # 攻击生成配置
 attack_generation:
   output_dir: "./data/attack_samples"
-  attack_ratio: 0.3  # 30%的论文用于生成攻击样本
+  attack_ratio: 0.5  # 50%的论文用于生成攻击样本
   attack_types:
     - "white_text"
     - "metadata"
     - "invisible_chars"
     - "mixed_language"
-  
+    - "steganographic"      
+    - "contextual_attack"   
   # 提示词模板
   prompt_templates:
     english:
@@ -113,3 +115,4 @@ experiment:
     figsize: [15, 10]
     dpi: 300
     save_format: "png"
+

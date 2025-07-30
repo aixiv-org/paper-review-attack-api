@@ -613,9 +613,9 @@ experiment:
       
       interactive:
         enabled: true
-        - "plotly_dashboard"
-        - "bokeh_plots"
-        - "interactive_threshold_tuning"
+          - "plotly_dashboard"
+          - "bokeh_plots"
+          - "interactive_threshold_tuning"
     
     # 报告生成
     report_generation:

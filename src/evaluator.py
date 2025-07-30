@@ -1479,3 +1479,8 @@ FNR: {metrics.get('false_negative_rate', 0):.3f}"""
             }
         
         return comparison
+
+    def generate_report(self, df_results: pd.DataFrame, metrics: Dict) -> str:
+        """生成详细报告 - 兼容性方法，调用增强版报告"""
+        logger.info("调用兼容性报告生成方法，转向增强版报告")
+        return self.generate_enhanced_report(df_results, metrics)

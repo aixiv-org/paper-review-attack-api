@@ -1,94 +1,81 @@
-_libgcc_mutex             0.1                        main    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-_openmp_mutex             5.1                       1_gnu    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-arxiv                     2.2.0                    pypi_0    pypi
-bzip2                     1.0.8                h5eee18b_6    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-ca-certificates           2025.2.25            h06a4308_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-certifi                   2025.7.14                pypi_0    pypi
-cffi                      1.17.1                   pypi_0    pypi
-charset-normalizer        3.4.2                    pypi_0    pypi
-click                     8.2.1                    pypi_0    pypi
-cryptography              45.0.5                   pypi_0    pypi
-expat                     2.7.1                h6a678d5_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-feedparser                6.0.11                   pypi_0    pypi
-filelock                  3.13.1                   pypi_0    pypi
-fsspec                    2024.6.1                 pypi_0    pypi
-hf-xet                    1.1.5                    pypi_0    pypi
-huggingface-hub           0.34.1                   pypi_0    pypi
-idna                      3.10                     pypi_0    pypi
-iniconfig                 2.1.0                    pypi_0    pypi
-jinja2                    3.1.4                    pypi_0    pypi
-joblib                    1.5.1                    pypi_0    pypi
-ld_impl_linux-64          2.40                 h12ee557_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-libffi                    3.4.4                h6a678d5_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-libgcc-ng                 11.2.0               h1234567_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-libgomp                   11.2.0               h1234567_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-libstdcxx-ng              11.2.0               h1234567_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-libuuid                   1.41.5               h5eee18b_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-libxcb                    1.17.0               h9b100fa_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-loguru                    0.7.3                    pypi_0    pypi
-markupsafe                2.1.5                    pypi_0    pypi
-mpmath                    1.3.0                    pypi_0    pypi
-ncurses                   6.4                  h6a678d5_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-networkx                  3.3                      pypi_0    pypi
-nltk                      3.9.1                    pypi_0    pypi
-numpy                     2.1.2                    pypi_0    pypi
-nvidia-cublas-cu11        11.11.3.6                pypi_0    pypi
-nvidia-cuda-cupti-cu11    11.8.87                  pypi_0    pypi
-nvidia-cuda-nvrtc-cu11    11.8.89                  pypi_0    pypi
-nvidia-cuda-runtime-cu11  11.8.89                  pypi_0    pypi
-nvidia-cudnn-cu11         9.1.0.70                 pypi_0    pypi
-nvidia-cufft-cu11         10.9.0.58                pypi_0    pypi
-nvidia-curand-cu11        10.3.0.86                pypi_0    pypi
-nvidia-cusolver-cu11      11.4.1.48                pypi_0    pypi
-nvidia-cusparse-cu11      11.7.5.86                pypi_0    pypi
-nvidia-nccl-cu11          2.21.5                   pypi_0    pypi
-nvidia-nvtx-cu11          11.8.86                  pypi_0    pypi
-openssl                   3.0.17               h5eee18b_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-packaging                 25.0                     pypi_0    pypi
-pandas                    2.3.1                    pypi_0    pypi
-pdfminer-six              20250506                 pypi_0    pypi
-pdfplumber                0.11.7                   pypi_0    pypi
-pillow                    11.0.0                   pypi_0    pypi
-pip                       25.1               pyhc872135_2    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-pluggy                    1.6.0                    pypi_0    pypi
-pthread-stubs             0.3                  h0ce48e5_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-pycparser                 2.22                     pypi_0    pypi
-pygments                  2.19.2                   pypi_0    pypi
-pymupdf                   1.26.3                   pypi_0    pypi
-pypdfium2                 4.30.0                   pypi_0    pypi
-pytest                    8.4.1                    pypi_0    pypi
-python                    3.12.0               h996f2a0_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-python-dateutil           2.9.0.post0              pypi_0    pypi
-pytz                      2025.2                   pypi_0    pypi
-pyyaml                    6.0.2                    pypi_0    pypi
-readline                  8.2                  h5eee18b_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-regex                     2024.11.6                pypi_0    pypi
-reportlab                 4.4.3                    pypi_0    pypi
-requests                  2.32.4                   pypi_0    pypi
-safetensors               0.5.3                    pypi_0    pypi
-scikit-learn              1.7.1                    pypi_0    pypi
-scipy                     1.16.0                   pypi_0    pypi
-setuptools                78.1.1          py312h06a4308_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-sgmllib3k                 1.0.0                    pypi_0    pypi
-six                       1.17.0                   pypi_0    pypi
-sqlite                    3.50.2               hb25bd0a_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-sympy                     1.13.1                   pypi_0    pypi
-threadpoolctl             3.6.0                    pypi_0    pypi
-tk                        8.6.14               h993c535_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-tokenizers                0.21.2                   pypi_0    pypi
-torch                     2.5.1+cu118              pypi_0    pypi
-torchaudio                2.5.1+cu118              pypi_0    pypi
-torchvision               0.20.1+cu118             pypi_0    pypi
-tqdm                      4.67.1                   pypi_0    pypi
-transformers              4.54.0                   pypi_0    pypi
-triton                    3.1.0                    pypi_0    pypi
-typing-extensions         4.12.2                   pypi_0    pypi
-tzdata                    2025.2                   pypi_0    pypi
-urllib3                   2.5.0                    pypi_0    pypi
-wheel                     0.45.1          py312h06a4308_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-xorg-libx11               1.8.12               h9b100fa_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-xorg-libxau               1.0.12               h9b100fa_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-xorg-libxdmcp             1.1.5                h9b100fa_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-xorg-xorgproto            2024.1               h5eee18b_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-xz                        5.6.4                h5eee18b_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-zlib                      1.2.13               h5eee18b_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+arxiv                    2.2.0
+certifi                  2025.7.14
+cffi                     1.17.1
+charset-normalizer       3.4.2
+click                    8.2.1
+contourpy                1.3.3
+cryptography             45.0.5
+cycler                   0.12.1
+feedparser               6.0.11
+filelock                 3.13.1
+fonttools                4.59.0
+fsspec                   2024.6.1
+hf-xet                   1.1.5
+huggingface-hub          0.34.1
+idna                     3.10
+iniconfig                2.1.0
+Jinja2                   3.1.4
+joblib                   1.5.1
+kiwisolver               1.4.8
+loguru                   0.7.3
+MarkupSafe               2.1.5
+matplotlib               3.10.3
+mpmath                   1.3.0
+narwhals                 2.0.1
+networkx                 3.3
+nltk                     3.9.1
+numpy                    2.1.2
+nvidia-cublas-cu11       11.11.3.6
+nvidia-cuda-cupti-cu11   11.8.87
+nvidia-cuda-nvrtc-cu11   11.8.89
+nvidia-cuda-runtime-cu11 11.8.89
+nvidia-cudnn-cu11        9.1.0.70
+nvidia-cufft-cu11        10.9.0.58
+nvidia-curand-cu11       10.3.0.86
+nvidia-cusolver-cu11     11.4.1.48
+nvidia-cusparse-cu11     11.7.5.86
+nvidia-nccl-cu11         2.21.5
+nvidia-nvtx-cu11         11.8.86
+packaging                25.0
+pandas                   2.3.1
+pdfminer.six             20250506
+pdfplumber               0.11.7
+pillow                   11.0.0
+pip                      25.1
+plotly                   6.2.0
+pluggy                   1.6.0
+psutil                   7.0.0
+pycparser                2.22
+Pygments                 2.19.2
+PyMuPDF                  1.26.3
+pyparsing                3.2.3
+pypdfium2                4.30.0
+pytest                   8.4.1
+python-dateutil          2.9.0.post0
+pytz                     2025.2
+PyYAML                   6.0.2
+regex                    2024.11.6
+reportlab                4.4.3
+requests                 2.32.4
+safetensors              0.5.3
+scikit-learn             1.7.1
+scipy                    1.16.0
+seaborn                  0.13.2
+setuptools               78.1.1
+sgmllib3k                1.0.0
+six                      1.17.0
+sympy                    1.13.1
+textblob                 0.19.0
+threadpoolctl            3.6.0
+tokenizers               0.21.2
+torch                    2.5.1+cu118
+torchaudio               2.5.1+cu118
+torchvision              0.20.1+cu118
+tqdm                     4.67.1
+transformers             4.54.0
+triton                   3.1.0
+typing_extensions        4.12.2
+tzdata                   2025.2
+urllib3                  2.5.0
+vaderSentiment           3.3.2
+wheel                    0.45.1

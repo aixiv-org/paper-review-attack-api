@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-攻击样本生成脚本
-基于正常PDF文件生成各种类型的提示词注入攻击样本
+轻量级检测脚本
+不依赖大型AI模型的PDF提示词注入检测
 """
 
 import sys
@@ -9,13 +9,14 @@ import os
 import argparse
 from pathlib import Path
 import json
+import pandas as pd
 
 # 添加项目根目录到Python路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.attack_generator import AttackSampleGenerator, AdvancedAttackGenerator
-from src.utils import setup_logging, load_config, ProgressTracker
+from src.detector_lite import LightweightPromptInjectionDetector
+from src.utils import setup_logging, load_config, ProgressTracker, save_results
 
 def load_file_list(file_list_path: str) -> list:
     """从文件加载PDF文件列表"""
@@ -29,6 +30,8 @@ def load_file_list(file_list_path: str) -> list:
             data = json.load(f)
             if isinstance(data, list):
                 files = data
+            elif isinstance(data, dict) and 'generated_files' in data:
+                files = data['generated_files']
             elif isinstance(data, dict) and 'files' in data:
                 files = data['files']
     
@@ -41,28 +44,23 @@ def load_file_list(file_list_path: str) -> list:
     return valid_files
 
 def main():
-    parser = argparse.ArgumentParser(description='生成攻击样本')
+    parser = argparse.ArgumentParser(description='运行轻量级提示词注入检测')
     parser.add_argument('--config', type=str, default='config/config.yaml',
                        help='配置文件路径')
     parser.add_argument('--input-dir', type=str,
                        help='输入PDF目录')
     parser.add_argument('--file-list', type=str,
                        help='PDF文件列表文件路径（.txt或.json）')
+    parser.add_argument('--single-file', type=str,
+                       help='单个PDF文件路径')
     parser.add_argument('--output-dir', type=str,
                        help='输出目录（覆盖配置文件）')
-    parser.add_argument('--attack-types', nargs='+',
-                       choices=['white_text', 'metadata', 'invisible_chars', 
-                               'mixed_language', 'steganographic'],
-                       help='攻击类型列表（覆盖配置文件）')
-    parser.add_argument('--attack-ratio', type=float,
-                       help='攻击样本比例（覆盖配置文件）')
-    parser.add_argument('--languages', nargs='+',
-                       choices=['english', 'chinese', 'japanese', 'mixed'],
-                       help='提示词语言列表')
-    parser.add_argument('--advanced', action='store_true',
-                       help='使用高级攻击生成器')
-    parser.add_argument('--batch-size', type=int, default=10,
+    parser.add_argument('--threshold', type=float,
+                       help='风险分数阈值（覆盖配置文件）')
+    parser.add_argument('--batch-size', type=int, default=20,
                        help='批处理大小')
+    parser.add_argument('--save-details', action='store_true',
+                       help='保存详细检测结果')
     parser.add_argument('--log-file', type=str,
                        help='日志文件路径')
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -75,7 +73,7 @@ def main():
     logger = setup_logging(log_level, args.log_file)
     
     logger.info("=" * 60)
-    logger.info("攻击样本生成器启动")
+    logger.info("轻量级提示词注入检测器启动")
     logger.info("=" * 60)
     
     try:
@@ -84,64 +82,51 @@ def main():
         
         # 命令行参数覆盖配置
         if args.output_dir:
-            config['attack_generation']['output_dir'] = args.output_dir
+            config['experiment']['output_dir'] = args.output_dir
         
-        if args.attack_types:
-            config['attack_generation']['attack_types'] = args.attack_types
-        
-        if args.attack_ratio:
-            config['attack_generation']['attack_ratio'] = args.attack_ratio
-        
-        if args.languages:
-            # 只保留指定语言的提示词
-            original_templates = config['attack_generation']['prompt_templates']
-            filtered_templates = {lang: original_templates[lang] 
-                                for lang in args.languages 
-                                if lang in original_templates}
-            config['attack_generation']['prompt_templates'] = filtered_templates
+        if args.threshold:
+            config['detection']['thresholds']['risk_score'] = args.threshold
         
         # 获取输入文件列表
         pdf_files = []
         
-        if args.file_list:
+        if args.single_file:
+            if os.path.exists(args.single_file):
+                pdf_files = [args.single_file]
+                logger.info(f"检测单个文件: {args.single_file}")
+            else:
+                logger.error(f"文件不存在: {args.single_file}")
+                return 1
+                
+        elif args.file_list:
             logger.info(f"从文件列表加载PDF: {args.file_list}")
             pdf_files = load_file_list(args.file_list)
+            
         elif args.input_dir:
             logger.info(f"从目录扫描PDF: {args.input_dir}")
             input_path = Path(args.input_dir)
             pdf_files = [str(f) for f in input_path.rglob("*.pdf")]
-        else:
-            # 使用配置文件中的默认目录
-            default_dir = config['data_collection']['download_dir']
-            logger.info(f"使用默认目录: {default_dir}")
             
-            # 尝试加载文件列表
-            file_list_path = Path(default_dir) / "downloaded_files.txt"
-            if file_list_path.exists():
-                pdf_files = load_file_list(str(file_list_path))
-            else:
-                # 扫描目录
-                pdf_files = [str(f) for f in Path(default_dir).rglob("*.pdf")]
+        else:
+            logger.error("必须指定输入源：--single-file、--file-list 或 --input-dir")
+            return 1
         
         if not pdf_files:
-            logger.error("没有找到PDF文件！请检查输入路径。")
+            logger.error("没有找到PDF文件！")
             return 1
         
         logger.info(f"找到 {len(pdf_files)} 个PDF文件")
         
-        # 创建攻击样本生成器
-        if args.advanced:
-            generator = AdvancedAttackGenerator(config)
-            logger.info("使用高级攻击生成器")
-        else:
-            generator = AttackSampleGenerator(config)
-            logger.info("使用标准攻击生成器")
+        # 创建轻量级检测器
+        detector = LightweightPromptInjectionDetector(config)
+        logger.info("使用轻量级检测器（无AI模型依赖）")
         
         # 分批处理
         batch_size = args.batch_size
         total_batches = (len(pdf_files) + batch_size - 1) // batch_size
         
-        all_generated_samples = []
+        all_results = []
+        progress = ProgressTracker(len(pdf_files), "检测PDF文件")
         
         for batch_idx in range(total_batches):
             start_idx = batch_idx * batch_size
@@ -151,69 +136,78 @@ def main():
             logger.info(f"处理批次 {batch_idx + 1}/{total_batches} "
                        f"({len(batch_files)} 个文件)")
             
-            try:
-                # 生成攻击样本
-                generated_samples = generator.generate_attack_samples(batch_files)
-                all_generated_samples.extend(generated_samples)
-                
-                logger.info(f"批次 {batch_idx + 1} 生成了 {len(generated_samples)} 个攻击样本")
-                
-            except Exception as e:
-                logger.error(f"批次 {batch_idx + 1} 处理失败: {e}")
-                continue
+            for file_path in batch_files:
+                try:
+                    result = detector.detect_injection(file_path)
+                    all_results.append(result)
+                    
+                    # 实时显示结果
+                    risk_score = result['risk_score']
+                    is_malicious = result['is_malicious']
+                    detection_count = result['detection_count']
+                    
+                    status = "🚨 恶意" if is_malicious else "✅ 正常"
+                    logger.info(f"{status} | {Path(file_path).name} | "
+                               f"风险: {risk_score:.3f} | 检测: {detection_count}")
+                    
+                    progress.update()
+                    
+                except Exception as e:
+                    logger.error(f"检测失败 {file_path}: {e}")
+                    progress.update()
+                    continue
         
-        # 获取统计信息
-        stats = generator.get_attack_statistics()
+        progress.finish()
+        
+        # 统计结果
+        total_files = len(all_results)
+        malicious_files = sum(1 for r in all_results if r['is_malicious'])
+        avg_risk_score = sum(r['risk_score'] for r in all_results) / total_files if total_files > 0 else 0
+        avg_detections = sum(r['detection_count'] for r in all_results) / total_files if total_files > 0 else 0
         
         logger.info("=" * 60)
-        logger.info("攻击样本生成完成")
+        logger.info("检测完成 - 统计结果")
         logger.info("=" * 60)
-        logger.info(f"总生成样本数: {len(all_generated_samples)}")
-        logger.info(f"攻击统计: {json.dumps(stats, indent=2, ensure_ascii=False)}")
+        logger.info(f"总文件数: {total_files}")
+        logger.info(f"检测为恶意: {malicious_files} ({malicious_files/total_files*100:.1f}%)")
+        logger.info(f"平均风险分数: {avg_risk_score:.3f}")
+        logger.info(f"平均检测数量: {avg_detections:.1f}")
         
-        # 保存生成的攻击样本列表
-        output_dir = Path(config['attack_generation']['output_dir'])
-        attack_list_path = output_dir / "generated_attacks.json"
+        # 保存结果
+        output_dir = Path(config['experiment']['output_dir'])
+        output_dir.mkdir(parents=True, exist_ok=True)
         
-        attack_info = {
-            'total_samples': len(all_generated_samples),
-            'generated_files': all_generated_samples,
-            'statistics': stats,
-            'generation_config': {
-                'attack_types': config['attack_generation']['attack_types'],
-                'attack_ratio': config['attack_generation']['attack_ratio'],
-                'languages': list(config['attack_generation']['prompt_templates'].keys())
+        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+        
+        # 保存简要结果
+        summary_results = []
+        for result in all_results:
+            summary = {
+                'file': result['file'],
+                'file_name': Path(result['file']).name,
+                'is_malicious': result['is_malicious'],
+                'risk_score': result['risk_score'],
+                'detection_count': result['detection_count']
             }
-        }
+            summary_results.append(summary)
         
-        with open(attack_list_path, 'w', encoding='utf-8') as f:
-            json.dump(attack_info, f, indent=2, ensure_ascii=False)
+        summary_file = output_dir / f"detection_summary_lite_{timestamp}.csv"
+        pd.DataFrame(summary_results).to_csv(summary_file, index=False, encoding='utf-8')
+        logger.info(f"检测摘要已保存: {summary_file}")
         
-        logger.info(f"攻击样本信息已保存到: {attack_list_path}")
-        
-        # 验证生成的文件
-        logger.info("验证生成的攻击样本...")
-        valid_samples = 0
-        invalid_samples = 0
-        
-        for sample_path in all_generated_samples:
-            if os.path.exists(sample_path) and os.path.getsize(sample_path) > 1024:
-                valid_samples += 1
-            else:
-                invalid_samples += 1
-        
-        logger.info(f"验证结果: {valid_samples} 个有效样本, {invalid_samples} 个无效样本")
-        
-        if invalid_samples > 0:
-            logger.warning(f"存在 {invalid_samples} 个无效攻击样本，请检查生成过程")
+        # 保存详细结果
+        if args.save_details:
+            details_file = output_dir / f"detection_details_lite_{timestamp}.json"
+            save_results(all_results, str(details_file))
+            logger.info(f"详细结果已保存: {details_file}")
         
         return 0
         
     except KeyboardInterrupt:
-        logger.warning("用户中断生成过程")
+        logger.warning("用户中断检测")
         return 1
     except Exception as e:
-        logger.error(f"生成过程中发生错误: {e}", exc_info=True)
+        logger.error(f"检测过程中发生错误: {e}", exc_info=True)
         return 1
 
 if __name__ == "__main__":

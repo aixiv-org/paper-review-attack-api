@@ -1,0 +1,108 @@
+{
+  "info": {
+    "name": "Prompt Injection Detection API",
+    "description": "API collection for testing prompt injection detection endpoints",
+    "version": "1.0.0"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Get Metrics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/metrics",
+          "host": ["{{base_url}}"],
+          "path": ["metrics"]
+        }
+      }
+    },
+    {
+      "name": "Single File Detection",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "/path/to/test.pdf"
+            },
+            {
+              "key": "detector_type",
+              "value": "ensemble",
+              "type": "text"
+            },
+            {
+              "key": "return_details",
+              "value": "true",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/detect/single",
+          "host": ["{{base_url}}"],
+          "path": ["detect", "single"]
+        }
+      }
+    },
+    {
+      "name": "Batch File Detection",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "files",
+              "type": "file",
+              "src": "/path/to/test1.pdf"
+            },
+            {
+              "key": "files",
+              "type": "file",
+              "src": "/path/to/test2.pdf"
+            },
+            {
+              "key": "detector_type",
+              "value": "ensemble",
+              "type": "text"
+            },
+            {
+              "key": "max_files",
+              "value": "10",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/detect/batch",
+          "host": ["{{base_url}}"],
+          "path": ["detect", "batch"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    }
+  ]
+}
